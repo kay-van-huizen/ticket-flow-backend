@@ -1,3 +1,15 @@
+# IDE
+.idea/
+*.iml
+out/
+
+# Build
+target/
+
+# Lokale files and secrets
+.env
+uploads/
+
 # Compiled class file
 *.class
 
