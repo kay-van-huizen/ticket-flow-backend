@@ -1,0 +1,33 @@
+{
+  "realm": "ticketflow",
+  "enabled": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "REPORTER",
+        "description": "Melder"
+      },
+      {
+        "name": "AGENT",
+        "description": "Agent"
+      },
+      {
+        "name": "ADMIN",
+        "description": "Beheerder"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "ticketflow-api",
+      "name": "TicketFlow API",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false
+    }
+  ]
+}
