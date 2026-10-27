@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.stream.Collectors;
@@ -83,6 +84,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex, HttpServletRequest request) {
         log.debug("Unreadable request body: {}", ex.getMessage());
         return buildResponse(HttpStatus.BAD_REQUEST, "Het verzoek bevat ongeldige of onleesbare JSON", request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(NoResourceFoundException ex, HttpServletRequest request) {
+        log.debug("No resource found: {}", ex.getMessage());
+        return buildResponse(HttpStatus.NOT_FOUND, "De opgevraagde bron bestaat niet", request);
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
