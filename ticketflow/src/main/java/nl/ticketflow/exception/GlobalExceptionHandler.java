@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
 import java.util.stream.Collectors;
@@ -82,6 +83,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex, HttpServletRequest request) {
         log.debug("Unreadable request body: {}", ex.getMessage());
         return buildResponse(HttpStatus.BAD_REQUEST, "Het verzoek bevat ongeldige of onleesbare JSON", request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        log.debug("Upload too large: {}", ex.getMessage());
+        return buildResponse(HttpStatus.CONTENT_TOO_LARGE, "Het bestand is te groot. De maximale grootte is 10 MB.", request);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
+        // Spring MVC exceptions (unknown URL, wrong method, missing parameter) carry their own 4xx status
+        if (ex instanceof org.springframework.web.ErrorResponse springError) {
+            log.debug("Request could not be handled: {}", ex.getMessage());
+            HttpStatus status = HttpStatus.valueOf(springError.getStatusCode().value());
+            return buildResponse(status, "Het verzoek kon niet worden verwerkt", request);
+        }
+        log.error("Unexpected error on {} {}", request.getMethod(), request.getRequestURI(), ex);
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Er is een onverwachte fout opgetreden", request);
     }
 
     private ResponseEntity<ErrorResponse> buildValidationResponse(Stream<String> errors, HttpServletRequest request) {
