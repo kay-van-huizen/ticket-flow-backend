@@ -29,5 +29,92 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false
     }
+  ],
+  "users": [
+    {
+      "id": "f47bf1c8-96ca-44f2-8b35-cb41fa32a648",
+      "username": "admin",
+      "enabled": true,
+      "firstName": "Sanne",
+      "lastName": "de Vries",
+      "email": "admin@example.com",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test1234!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["default-roles-ticketflow", "ADMIN"]
+    },
+    {
+      "id": "dbfc6416-851c-4af9-865d-b2a3029742f5",
+      "username": "agent1",
+      "enabled": true,
+      "firstName": "Daan",
+      "lastName": "Jansen",
+      "email": "agent1@example.com",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test1234!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["default-roles-ticketflow", "AGENT"]
+    },
+    {
+      "id": "4cad0239-a5e8-4e40-bb7b-556f74aecd95",
+      "username": "agent2",
+      "enabled": true,
+      "firstName": "Lotte",
+      "lastName": "Bakker",
+      "email": "agent2@example.com",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test1234!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["default-roles-ticketflow", "AGENT"]
+    },
+    {
+      "id": "133e7a3f-47e9-4598-8b1c-6d6319799bfe",
+      "username": "melder1",
+      "enabled": true,
+      "firstName": "Ruben",
+      "lastName": "Visser",
+      "email": "melder1@example.com",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test1234!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["default-roles-ticketflow", "REPORTER"]
+    },
+    {
+      "id": "01d4d383-0bf5-42ac-829e-57135206aa21",
+      "username": "melder2",
+      "enabled": true,
+      "firstName": "Emma",
+      "lastName": "Smit",
+      "email": "melder2@example.com",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test1234!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["default-roles-ticketflow", "REPORTER"]
+    }
   ]
 }
