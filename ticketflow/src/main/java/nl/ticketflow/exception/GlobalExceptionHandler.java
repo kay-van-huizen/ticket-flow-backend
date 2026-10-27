@@ -5,11 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import nl.ticketflow.dto.response.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
 import java.util.stream.Collectors;
@@ -67,6 +69,19 @@ public class GlobalExceptionHandler {
                             return name + ": " + error.getDefaultMessage();
                         }));
         return buildValidationResponse(errors, request);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        String message = "Ongeldige waarde '" + ex.getValue() + "' voor parameter '" + ex.getName() + "'";
+        log.debug(message);
+        return buildResponse(HttpStatus.BAD_REQUEST, message, request);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex, HttpServletRequest request) {
+        log.debug("Unreadable request body: {}", ex.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, "Het verzoek bevat ongeldige of onleesbare JSON", request);
     }
 
     private ResponseEntity<ErrorResponse> buildValidationResponse(Stream<String> errors, HttpServletRequest request) {
