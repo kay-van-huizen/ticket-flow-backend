@@ -31,7 +31,10 @@
         <!-- CVE overrides: zie dependency-check van 27-10-2026 -->
         <logback.version>1.6.6</logback.version>             <!-- CVE-2026-19880 -->
         <jackson-bom.version>3.2.4</jackson-bom.version>     <!-- CVE-2026-110879 -->
+        <jackson-2-bom.version>2.22.4</jackson-2-bom.version> <!-- CVE-2026-110879, Jackson 2 via springdoc/swagger-core -->
         <asm.version>9.11.1</asm.version>                    <!-- CVE-2026-110260 -->
+        <!-- springdoc wordt niet door Spring Boot beheerd; 3.1.x-3.2.x hoort bij Boot 4.1.x -->
+        <springdoc.version>3.2.0</springdoc.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -55,6 +58,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
 
         <dependency>
