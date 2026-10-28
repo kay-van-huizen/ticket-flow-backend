@@ -5,6 +5,7 @@ import nl.ticketflow.dto.request.CreateCategoryRequest;
 import nl.ticketflow.dto.request.UpdateCategoryRequest;
 import nl.ticketflow.dto.response.CategoryResponse;
 import nl.ticketflow.entity.Category;
+import nl.ticketflow.entity.CategoryStatus;
 import nl.ticketflow.exception.BusinessRuleException;
 import nl.ticketflow.exception.ResourceNotFoundException;
 import nl.ticketflow.mapper.CategoryMapper;
@@ -67,6 +68,9 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     public CategoryResponse create(CreateCategoryRequest request) {
         Category parent = request.parentId() == null ? null : findCategoryOrThrow(request.parentId());
+        if (parent != null && parent.getStatus() == CategoryStatus.INACTIVE) {
+            throw new BusinessRuleException("Een inactieve categorie kan niet als ouder worden gekozen");
+        }
 
         Category category = categoryMapper.toEntity(request);
         category.setParent(parent);
@@ -86,6 +90,10 @@ public class CategoryServiceImpl implements CategoryService {
             throw new BusinessRuleException("Een categorie kan niet zijn eigen ouder zijn");
         } else {
             Category newParent = findCategoryOrThrow(request.parentId());
+
+            if (!newParent.equals(category.getParent()) && newParent.getStatus() == CategoryStatus.INACTIVE) {
+                throw new BusinessRuleException("Een inactieve categorie kan niet als ouder worden gekozen");
+            }
             // Walk up from the new parent; finding this category means the move would create a cycle
             for (Category ancestor = newParent; ancestor != null; ancestor = ancestor.getParent()) {
                 if (ancestor.getId().equals(id)) {
