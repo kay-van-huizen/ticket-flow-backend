@@ -3,6 +3,8 @@ package nl.ticketflow.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import nl.ticketflow.dto.response.ErrorResponse;
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -15,8 +17,10 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import tools.jackson.databind.exc.InvalidFormatException;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -60,23 +64,26 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex, HttpServletRequest request) {
+        log.warn("Data integrity violation on {} {}: {}", request.getMethod(), request.getRequestURI(),
+                ex.getMostSpecificCause().getMessage());
+        return buildResponse(HttpStatus.CONFLICT,
+                "De actie kan niet worden uitgevoerd omdat deze botst met bestaande gegevens", request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
         Stream<String> errors = ex.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage());
+                .map(FieldError::getDefaultMessage);
         return buildValidationResponse(errors, request);
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)
     public ResponseEntity<ErrorResponse> handleMethodValidation(HandlerMethodValidationException ex, HttpServletRequest request) {
         Stream<String> errors = ex.getParameterValidationResults().stream()
-                .flatMap(result -> result.getResolvableErrors().stream()
-                        .map(error -> {
-                            String name = error instanceof FieldError fieldError
-                                    ? fieldError.getField()
-                                    : result.getMethodParameter().getParameterName();
-                            return name + ": " + error.getDefaultMessage();
-                        }));
+                .flatMap(result -> result.getResolvableErrors().stream())
+                .map(MessageSourceResolvable::getDefaultMessage);
         return buildValidationResponse(errors, request);
     }
 
@@ -90,6 +97,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex, HttpServletRequest request) {
         log.debug("Unreadable request body: {}", ex.getMessage());
+        if (ex.getMostSpecificCause() instanceof InvalidFormatException invalidFormat) {
+            String field = invalidFormat.getPath().stream()
+                    .map(reference -> reference.getPropertyName() != null
+                            ? reference.getPropertyName()
+                            : "[" + reference.getIndex() + "]")
+                    .collect(Collectors.joining("."));
+            String message = "Ongeldige waarde '" + invalidFormat.getValue() + "' voor veld '" + field + "'";
+            Class<?> targetType = invalidFormat.getTargetType();
+            if (targetType != null && targetType.isEnum()) {
+                message += ". Toegestane waarden: " + Arrays.stream(targetType.getEnumConstants())
+                        .map(String::valueOf)
+                        .collect(Collectors.joining(", "));
+            }
+            return buildResponse(HttpStatus.BAD_REQUEST, message, request);
+        }
         return buildResponse(HttpStatus.BAD_REQUEST, "Het verzoek bevat ongeldige of onleesbare JSON", request);
     }
 

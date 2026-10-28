@@ -81,17 +81,16 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     public CategoryResponse update(UUID id, UpdateCategoryRequest request) {
         Category category = findCategoryOrThrow(id);
-        categoryMapper.updateEntity(category, request);
 
         // PUT is a full replacement, so a missing parentId makes this a root category
-        if (request.parentId() == null) {
-            category.setParent(null);
-        } else if (request.parentId().equals(id)) {
-            throw new BusinessRuleException("Een categorie kan niet zijn eigen ouder zijn");
-        } else {
-            Category newParent = findCategoryOrThrow(request.parentId());
+        Category newParent = null;
+        if (request.parentId() != null) {
+            if (request.parentId().equals(id)) {
+                throw new BusinessRuleException("Een categorie kan niet zijn eigen ouder zijn");
+            }
+            newParent = findCategoryOrThrow(request.parentId());
 
-            if (!newParent.equals(category.getParent()) && newParent.getStatus() == CategoryStatus.INACTIVE) {
+            if (category.getStatus() == CategoryStatus.ACTIVE && newParent.getStatus() == CategoryStatus.INACTIVE) {
                 throw new BusinessRuleException("Een inactieve categorie kan niet als ouder worden gekozen");
             }
             // Walk up from the new parent; finding this category means the move would create a cycle
@@ -100,9 +99,10 @@ public class CategoryServiceImpl implements CategoryService {
                     throw new BusinessRuleException("Een categorie kan geen subcategorie van een eigen subcategorie als ouder hebben");
                 }
             }
-            category.setParent(newParent);
         }
 
+        categoryMapper.updateEntity(category, request);
+        category.setParent(newParent);
         return categoryMapper.toResponse(categoryRepository.save(category));
     }
 
@@ -110,6 +110,16 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     public CategoryResponse changeStatus(UUID id, ChangeCategoryStatusRequest request) {
         Category category = findCategoryOrThrow(id);
+
+        if (request.status() == CategoryStatus.INACTIVE
+                && categoryRepository.existsByParentIdAndStatus(id, CategoryStatus.ACTIVE)) {
+            throw new BusinessRuleException("Categorie kan niet worden gedeactiveerd zolang er actieve subcategorieën zijn");
+        }
+        if (request.status() == CategoryStatus.ACTIVE
+                && category.getParent() != null && category.getParent().getStatus() == CategoryStatus.INACTIVE) {
+            throw new BusinessRuleException("Een subcategorie kan niet worden geactiveerd zolang de bovenliggende categorie inactief is");
+        }
+
         category.setStatus(request.status());
         return categoryMapper.toResponse(categoryRepository.save(category));
     }

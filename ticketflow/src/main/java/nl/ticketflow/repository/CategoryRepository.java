@@ -1,6 +1,7 @@
 package nl.ticketflow.repository;
 
 import nl.ticketflow.entity.Category;
+import nl.ticketflow.entity.CategoryStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -13,4 +14,6 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
     List<Category> findByParentId(UUID parentId);
 
     boolean existsByParentId(UUID parentId);
+
+    boolean existsByParentIdAndStatus(UUID parentId, CategoryStatus status);
 }

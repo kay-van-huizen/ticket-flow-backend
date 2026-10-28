@@ -124,6 +124,8 @@ public class CategoryController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "404", description = "Categorie niet gevonden",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "Actieve subcategorieën of inactieve bovenliggende categorie",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<CategoryResponse> changeStatus(@PathVariable UUID id,
                                                          @Valid @RequestBody ChangeCategoryStatusRequest request) {
         return ResponseEntity.ok(categoryService.changeStatus(id, request));
