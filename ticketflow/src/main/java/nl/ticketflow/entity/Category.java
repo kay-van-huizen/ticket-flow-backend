@@ -29,8 +29,9 @@ public class Category extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Enumerated(EnumType.STRING)
     @Column(length = 20)
-    private String color;
+    private Color color;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
