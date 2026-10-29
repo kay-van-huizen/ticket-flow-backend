@@ -1,6 +1,7 @@
 package nl.ticketflow.service;
 
 import nl.ticketflow.dto.response.TicketResponse;
+import nl.ticketflow.entity.TicketPriority;
 import nl.ticketflow.entity.TicketStatus;
 import nl.ticketflow.exception.BusinessRuleException;
 import nl.ticketflow.exception.ForbiddenException;
@@ -20,4 +21,22 @@ public interface TicketWorkflowService {
      * @throws BusinessRuleException            if the transition violates another business rule
      */
     TicketResponse changeStatus(UUID ticketId, TicketStatus newStatus);
+
+    /**
+     * Changes the priority of a ticket and recalculates its due date from the creation time; only for agents and admins.
+     *
+     * @throws ResourceNotFoundException if the ticket does not exist or is deleted
+     * @throws ForbiddenException        if the current user is not an agent or admin
+     * @throws BusinessRuleException     if the ticket is closed
+     */
+    TicketResponse changePriority(UUID ticketId, TicketPriority newPriority);
+
+    /**
+     * Assigns a ticket to an agent or admin; only for agents and admins.
+     *
+     * @throws ResourceNotFoundException if the ticket or the assignee does not exist
+     * @throws ForbiddenException        if the current user is not an agent or admin
+     * @throws BusinessRuleException     if the ticket is closed or the assignee is not an agent or admin
+     */
+    TicketResponse assign(UUID ticketId, UUID assigneeId);
 }

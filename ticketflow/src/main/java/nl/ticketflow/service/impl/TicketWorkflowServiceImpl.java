@@ -3,6 +3,7 @@ package nl.ticketflow.service.impl;
 import nl.ticketflow.dto.response.TicketResponse;
 import nl.ticketflow.entity.Ticket;
 import nl.ticketflow.entity.TicketEventType;
+import nl.ticketflow.entity.TicketPriority;
 import nl.ticketflow.entity.TicketStatus;
 import nl.ticketflow.entity.UserAccount;
 import nl.ticketflow.entity.UserRole;
@@ -12,7 +13,9 @@ import nl.ticketflow.exception.InvalidStatusTransitionException;
 import nl.ticketflow.exception.ResourceNotFoundException;
 import nl.ticketflow.mapper.TicketMapper;
 import nl.ticketflow.repository.TicketRepository;
+import nl.ticketflow.repository.UserAccountRepository;
 import nl.ticketflow.security.CurrentUserService;
+import nl.ticketflow.service.SlaPolicy;
 import nl.ticketflow.service.TicketWorkflowService;
 import nl.ticketflow.service.UserService;
 import org.springframework.stereotype.Service;
@@ -35,15 +38,20 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
     private final CurrentUserService currentUserService;
     private final UserService userService;
     private final TicketEventRecorder ticketEventRecorder;
+    private final UserAccountRepository userAccountRepository;
+    private final SlaPolicy slaPolicy;
 
     public TicketWorkflowServiceImpl(TicketRepository ticketRepository, TicketMapper ticketMapper,
                                      CurrentUserService currentUserService, UserService userService,
-                                     TicketEventRecorder ticketEventRecorder) {
+                                     TicketEventRecorder ticketEventRecorder,
+                                     UserAccountRepository userAccountRepository, SlaPolicy slaPolicy) {
         this.ticketRepository = ticketRepository;
         this.ticketMapper = ticketMapper;
         this.currentUserService = currentUserService;
         this.userService = userService;
         this.ticketEventRecorder = ticketEventRecorder;
+        this.userAccountRepository = userAccountRepository;
+        this.slaPolicy = slaPolicy;
     }
 
     @Override
@@ -91,6 +99,70 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
         ticketEventRecorder.record(ticket, eventType, currentStatus.name(), newStatus.name(), currentUser);
         // Flush so @PreUpdate sets updatedAt before the response is built
         return ticketMapper.toResponse(ticketRepository.saveAndFlush(ticket));
+    }
+
+    @Override
+    @Transactional
+    public TicketResponse changePriority(UUID ticketId, TicketPriority newPriority) {
+        UserAccount currentUser = userService.getOrCreateCurrentUser();
+        Ticket ticket = findTicketOrThrow(ticketId);
+        checkAgentOrAdmin("Alleen agents en beheerders mogen de prioriteit wijzigen");
+        checkNotClosed(ticket);
+
+        TicketPriority currentPriority = ticket.getPriority();
+        if (currentPriority == newPriority) {
+            return ticketMapper.toResponse(ticket);
+        }
+
+        ticket.setPriority(newPriority);
+        // The SLA counts from creation, not from the moment the priority changes
+        ticket.setDueAt(slaPolicy.calculateDueAt(ticket.getCreatedAt(), newPriority));
+        ticketEventRecorder.record(ticket, TicketEventType.PRIORITY_CHANGED, currentPriority.name(),
+                newPriority.name(), currentUser);
+        return ticketMapper.toResponse(ticketRepository.saveAndFlush(ticket));
+    }
+
+    @Override
+    @Transactional
+    public TicketResponse assign(UUID ticketId, UUID assigneeId) {
+        UserAccount currentUser = userService.getOrCreateCurrentUser();
+        Ticket ticket = findTicketOrThrow(ticketId);
+        checkAgentOrAdmin("Alleen agents en beheerders mogen tickets toewijzen");
+        checkNotClosed(ticket);
+
+        UserAccount assignee = userAccountRepository.findById(assigneeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Gebruiker niet gevonden"));
+        // Same role source as GET, the role stored on the UserAccount, synced from the token
+        if (!AGENT_OR_ADMIN.contains(assignee.getRole())) {
+            throw new BusinessRuleException("Een ticket kan alleen worden toegewezen aan een agent of beheerder");
+        }
+
+        UserAccount currentAssignee = ticket.getAssignee();
+        if (currentAssignee != null && currentAssignee.getId().equals(assignee.getId())) {
+            return ticketMapper.toResponse(ticket);
+        }
+
+        ticket.setAssignee(assignee);
+        String oldValue = currentAssignee != null ? currentAssignee.getUsername() : null;
+        ticketEventRecorder.record(ticket, TicketEventType.ASSIGNED, oldValue, assignee.getUsername(), currentUser);
+        return ticketMapper.toResponse(ticketRepository.saveAndFlush(ticket));
+    }
+
+    private Ticket findTicketOrThrow(UUID id) {
+        return ticketRepository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Ticket niet gevonden"));
+    }
+
+    private void checkAgentOrAdmin(String message) {
+        if (!AGENT_OR_ADMIN.contains(currentUserService.getCurrentRole())) {
+            throw new ForbiddenException(message);
+        }
+    }
+
+    private void checkNotClosed(Ticket ticket) {
+        if (ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new BusinessRuleException("Een gesloten ticket kan niet meer worden gewijzigd");
+        }
     }
 
     // Roles allowed to move a ticket from one status to another; an empty set means the transition is undefined
