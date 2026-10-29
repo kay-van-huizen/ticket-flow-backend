@@ -3,6 +3,7 @@ package nl.ticketflow.service.impl;
 import nl.ticketflow.dto.request.CreateTicketRequest;
 import nl.ticketflow.dto.request.UpdateTicketRequest;
 import nl.ticketflow.dto.response.TicketResponse;
+import nl.ticketflow.dto.response.TicketStatsResponse;
 import nl.ticketflow.entity.Category;
 import nl.ticketflow.entity.CategoryStatus;
 import nl.ticketflow.entity.Label;
@@ -30,11 +31,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class TicketServiceImpl implements TicketService {
+
+    // Tickets in these statuses are never overdue and do not count as unassigned work
+    private static final Set<TicketStatus> FINISHED_STATUSES = EnumSet.of(TicketStatus.RESOLVED, TicketStatus.CLOSED);
 
     private final TicketRepository ticketRepository;
     private final CategoryRepository categoryRepository;
@@ -115,6 +123,43 @@ public class TicketServiceImpl implements TicketService {
                 .stream()
                 .map(ticketMapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TicketResponse> getOverdueTickets() {
+        return ticketRepository.findOverdue(LocalDateTime.now(), FINISHED_STATUSES).stream()
+                .map(ticketMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TicketStatsResponse getStats() {
+        // EnumMap keeps the declaration order in the JSON; missing enum values stay 0
+        Map<TicketStatus, Long> byStatus = new EnumMap<>(TicketStatus.class);
+        for (TicketStatus status : TicketStatus.values()) {
+            byStatus.put(status, 0L);
+        }
+        for (Object[] row : ticketRepository.countPerStatus()) {
+            byStatus.put((TicketStatus) row[0], (Long) row[1]);
+        }
+
+        Map<TicketPriority, Long> byPriority = new EnumMap<>(TicketPriority.class);
+        for (TicketPriority priority : TicketPriority.values()) {
+            byPriority.put(priority, 0L);
+        }
+        for (Object[] row : ticketRepository.countPerPriority()) {
+            byPriority.put((TicketPriority) row[0], (Long) row[1]);
+        }
+
+        return new TicketStatsResponse(
+                ticketRepository.countByDeletedAtIsNull(),
+                byStatus,
+                byPriority,
+                ticketRepository.countOverdue(LocalDateTime.now(), FINISHED_STATUSES),
+                ticketRepository.countByAssigneeIsNullAndStatusNotInAndDeletedAtIsNull(FINISHED_STATUSES)
+        );
     }
 
     @Override
