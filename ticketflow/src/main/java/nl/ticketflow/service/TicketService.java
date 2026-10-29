@@ -15,9 +15,14 @@ public interface TicketService {
 
     TicketResponse getTicket(UUID id);
 
-    List<TicketResponse> listTickets(TicketStatus status, TicketPriority priority, UUID categoryId, UUID assigneeId);
+    List<TicketResponse> listTickets(TicketStatus status, TicketPriority priority, UUID categoryId, UUID assigneeId,
+                                     UUID labelId);
 
     TicketResponse updateTicket(UUID id, UpdateTicketRequest request);
 
     void deleteTicket(UUID id);
+
+    TicketResponse addLabel(UUID ticketId, UUID labelId);
+
+    void removeLabel(UUID ticketId, UUID labelId);
 }

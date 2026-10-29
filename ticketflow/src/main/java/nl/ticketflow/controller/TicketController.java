@@ -1,6 +1,7 @@
 package nl.ticketflow.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -84,8 +85,10 @@ public class TicketController {
     public ResponseEntity<List<TicketResponse>> getAll(@RequestParam(required = false) TicketStatus status,
                                                        @RequestParam(required = false) TicketPriority priority,
                                                        @RequestParam(required = false) UUID categoryId,
-                                                       @RequestParam(required = false) UUID assigneeId) {
-        return ResponseEntity.ok(ticketService.listTickets(status, priority, categoryId, assigneeId));
+                                                       @RequestParam(required = false) UUID assigneeId,
+                                                       @Parameter(description = "Filter op label")
+                                                       @RequestParam(required = false) UUID labelId) {
+        return ResponseEntity.ok(ticketService.listTickets(status, priority, categoryId, assigneeId, labelId));
     }
 
     @GetMapping("/{id}")
@@ -174,6 +177,36 @@ public class TicketController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<List<TicketEventResponse>> getHistory(@PathVariable UUID id) {
         return ResponseEntity.ok(ticketWorkflowService.getHistory(id));
+    }
+
+    @PutMapping("/{id}/labels/{labelId}")
+    @PreAuthorize("hasAnyRole('AGENT','ADMIN')")
+    @Operation(summary = "Koppel een label aan een ticket",
+            description = "Is het label al gekoppeld, dan verandert er niets. Alleen voor agents en beheerders.")
+    @ApiResponse(responseCode = "200", description = "Ticket met de bijgewerkte labels")
+    @ApiResponse(responseCode = "400", description = "Ongeldig ticket- of label-id",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "404", description = "Ticket of label niet gevonden",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "Ticket is gesloten",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<TicketResponse> addLabel(@PathVariable UUID id, @PathVariable UUID labelId) {
+        return ResponseEntity.ok(ticketService.addLabel(id, labelId));
+    }
+
+    @DeleteMapping("/{id}/labels/{labelId}")
+    @PreAuthorize("hasAnyRole('AGENT','ADMIN')")
+    @Operation(summary = "Ontkoppel een label van een ticket", description = "Alleen voor agents en beheerders.")
+    @ApiResponse(responseCode = "204", description = "Label ontkoppeld")
+    @ApiResponse(responseCode = "400", description = "Ongeldig ticket- of label-id",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "404", description = "Ticket of label niet gevonden, of label niet gekoppeld aan dit ticket",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "Ticket is gesloten",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<Void> removeLabel(@PathVariable UUID id, @PathVariable UUID labelId) {
+        ticketService.removeLabel(id, labelId);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")
