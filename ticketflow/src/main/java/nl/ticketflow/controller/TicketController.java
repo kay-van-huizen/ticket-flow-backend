@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import nl.ticketflow.dto.request.ChangeStatusRequest;
 import nl.ticketflow.dto.request.CreateTicketRequest;
 import nl.ticketflow.dto.request.UpdateTicketRequest;
 import nl.ticketflow.dto.response.ErrorResponse;
@@ -14,10 +15,12 @@ import nl.ticketflow.dto.response.TicketResponse;
 import nl.ticketflow.entity.TicketPriority;
 import nl.ticketflow.entity.TicketStatus;
 import nl.ticketflow.service.TicketService;
+import nl.ticketflow.service.TicketWorkflowService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -42,9 +45,11 @@ import java.util.UUID;
 public class TicketController {
 
     private final TicketService ticketService;
+    private final TicketWorkflowService ticketWorkflowService;
 
-    public TicketController(TicketService ticketService) {
+    public TicketController(TicketService ticketService, TicketWorkflowService ticketWorkflowService) {
         this.ticketService = ticketService;
+        this.ticketWorkflowService = ticketWorkflowService;
     }
 
     @PostMapping
@@ -104,6 +109,23 @@ public class TicketController {
     public ResponseEntity<TicketResponse> update(@PathVariable UUID id,
                                                  @Valid @RequestBody UpdateTicketRequest request) {
         return ResponseEntity.ok(ticketService.updateTicket(id, request));
+    }
+
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('REPORTER','AGENT','ADMIN')")
+    @Operation(summary = "Wijzig de status van een ticket volgens de workflowregels",
+            description = "Welke overgangen zijn toegestaan hangt af van de rol. Een melder kan alleen een eigen "
+                    + "opgelost ticket sluiten of binnen 7 dagen heropenen.")
+    @ApiResponse(responseCode = "200", description = "Ticket met de nieuwe status")
+    @ApiResponse(responseCode = "400", description = "Status ontbreekt, is ongeldig of de overgang is niet toegestaan",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "404", description = "Ticket niet gevonden",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "Ticket is nog niet toegewezen of de heropentermijn is verlopen",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<TicketResponse> changeStatus(@PathVariable UUID id,
+                                                       @Valid @RequestBody ChangeStatusRequest request) {
+        return ResponseEntity.ok(ticketWorkflowService.changeStatus(id, request.status()));
     }
 
     @DeleteMapping("/{id}")
