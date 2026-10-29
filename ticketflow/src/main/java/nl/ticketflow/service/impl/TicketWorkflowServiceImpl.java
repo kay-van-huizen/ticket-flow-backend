@@ -2,7 +2,9 @@ package nl.ticketflow.service.impl;
 
 import nl.ticketflow.dto.response.TicketResponse;
 import nl.ticketflow.entity.Ticket;
+import nl.ticketflow.entity.TicketEventType;
 import nl.ticketflow.entity.TicketStatus;
+import nl.ticketflow.entity.UserAccount;
 import nl.ticketflow.entity.UserRole;
 import nl.ticketflow.exception.BusinessRuleException;
 import nl.ticketflow.exception.ForbiddenException;
@@ -12,6 +14,7 @@ import nl.ticketflow.mapper.TicketMapper;
 import nl.ticketflow.repository.TicketRepository;
 import nl.ticketflow.security.CurrentUserService;
 import nl.ticketflow.service.TicketWorkflowService;
+import nl.ticketflow.service.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,24 +33,30 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
     private final TicketRepository ticketRepository;
     private final TicketMapper ticketMapper;
     private final CurrentUserService currentUserService;
+    private final UserService userService;
+    private final TicketEventRecorder ticketEventRecorder;
 
     public TicketWorkflowServiceImpl(TicketRepository ticketRepository, TicketMapper ticketMapper,
-                                     CurrentUserService currentUserService) {
+                                     CurrentUserService currentUserService, UserService userService,
+                                     TicketEventRecorder ticketEventRecorder) {
         this.ticketRepository = ticketRepository;
         this.ticketMapper = ticketMapper;
         this.currentUserService = currentUserService;
+        this.userService = userService;
+        this.ticketEventRecorder = ticketEventRecorder;
     }
 
     @Override
     @Transactional
     public TicketResponse changeStatus(UUID ticketId, TicketStatus newStatus) {
-        UUID currentUserId = currentUserService.getCurrentUserId();
+        // Creates the UserAccount on first login, so changedBy of the event always exists in the database
+        UserAccount currentUser = userService.getOrCreateCurrentUser();
         UserRole role = currentUserService.getCurrentRole();
 
         Ticket ticket = ticketRepository.findByIdAndDeletedAtIsNull(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket niet gevonden"));
 
-        if (role == UserRole.REPORTER && !ticket.getReporter().getId().equals(currentUserId)) {
+        if (role == UserRole.REPORTER && !ticket.getReporter().getId().equals(currentUser.getId())) {
             throw new ForbiddenException("U heeft geen toegang tot dit ticket");
         }
 
@@ -77,6 +86,9 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
         if (reopen) {
             ticket.setResolvedAt(null);
         }
+        // A reopen is recorded only as REOPENED, not also as STATUS_CHANGED
+        TicketEventType eventType = reopen ? TicketEventType.REOPENED : TicketEventType.STATUS_CHANGED;
+        ticketEventRecorder.record(ticket, eventType, currentStatus.name(), newStatus.name(), currentUser);
         // Flush so @PreUpdate sets updatedAt before the response is built
         return ticketMapper.toResponse(ticketRepository.saveAndFlush(ticket));
     }

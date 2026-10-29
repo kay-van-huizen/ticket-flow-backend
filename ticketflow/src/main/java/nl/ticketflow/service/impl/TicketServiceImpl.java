@@ -6,6 +6,7 @@ import nl.ticketflow.dto.response.TicketResponse;
 import nl.ticketflow.entity.Category;
 import nl.ticketflow.entity.CategoryStatus;
 import nl.ticketflow.entity.Ticket;
+import nl.ticketflow.entity.TicketEventType;
 import nl.ticketflow.entity.TicketPriority;
 import nl.ticketflow.entity.TicketStatus;
 import nl.ticketflow.entity.UserAccount;
@@ -39,16 +40,19 @@ public class TicketServiceImpl implements TicketService {
     private final CurrentUserService currentUserService;
     private final UserService userService;
     private final SlaPolicy slaPolicy;
+    private final TicketEventRecorder ticketEventRecorder;
 
     public TicketServiceImpl(TicketRepository ticketRepository, CategoryRepository categoryRepository,
                              TicketMapper ticketMapper, CurrentUserService currentUserService,
-                             UserService userService, SlaPolicy slaPolicy) {
+                             UserService userService, SlaPolicy slaPolicy,
+                             TicketEventRecorder ticketEventRecorder) {
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
         this.ticketMapper = ticketMapper;
         this.currentUserService = currentUserService;
         this.userService = userService;
         this.slaPolicy = slaPolicy;
+        this.ticketEventRecorder = ticketEventRecorder;
     }
 
     @Override
@@ -65,6 +69,7 @@ public class TicketServiceImpl implements TicketService {
         Ticket saved = ticketRepository.save(ticket);
         // createdAt is set by @PrePersist during save; dirty checking persists dueAt on commit
         saved.setDueAt(slaPolicy.calculateDueAt(saved.getCreatedAt(), saved.getPriority()));
+        ticketEventRecorder.record(saved, TicketEventType.CREATED, null, saved.getStatus().name(), reporter);
         return ticketMapper.toResponse(saved);
     }
 
