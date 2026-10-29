@@ -16,6 +16,7 @@ import nl.ticketflow.repository.CommentRepository;
 import nl.ticketflow.repository.TicketRepository;
 import nl.ticketflow.security.CurrentUserService;
 import nl.ticketflow.service.CommentService;
+import nl.ticketflow.service.FileStorageService;
 import nl.ticketflow.service.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,15 +32,17 @@ public class CommentServiceImpl implements CommentService {
     private final CommentMapper commentMapper;
     private final CurrentUserService currentUserService;
     private final UserService userService;
+    private final FileStorageService fileStorageService;
 
     public CommentServiceImpl(CommentRepository commentRepository, TicketRepository ticketRepository,
                               CommentMapper commentMapper, CurrentUserService currentUserService,
-                              UserService userService) {
+                              UserService userService, FileStorageService fileStorageService) {
         this.commentRepository = commentRepository;
         this.ticketRepository = ticketRepository;
         this.commentMapper = commentMapper;
         this.currentUserService = currentUserService;
         this.userService = userService;
+        this.fileStorageService = fileStorageService;
     }
 
     @Override
@@ -93,8 +96,14 @@ public class CommentServiceImpl implements CommentService {
             throw new ForbiddenException("Je mag alleen je eigen reacties verwijderen");
         }
 
+        String storagePath = comment.getAttachment() == null ? null : comment.getAttachment().getStoragePath();
         // CascadeType.ALL on Comment.attachment removes the attachment row as well
         commentRepository.delete(comment);
+        // Flush first, so the file is only removed once the rows are actually deleted
+        commentRepository.flush();
+        if (storagePath != null) {
+            fileStorageService.delete(storagePath);
+        }
     }
 
     // Soft-deleted tickets give 404; a REPORTER gets 403 on someone else's ticket
