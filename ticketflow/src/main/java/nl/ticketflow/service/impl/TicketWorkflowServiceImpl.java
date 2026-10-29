@@ -1,0 +1,94 @@
+package nl.ticketflow.service.impl;
+
+import nl.ticketflow.dto.response.TicketResponse;
+import nl.ticketflow.entity.Ticket;
+import nl.ticketflow.entity.TicketStatus;
+import nl.ticketflow.entity.UserRole;
+import nl.ticketflow.exception.BusinessRuleException;
+import nl.ticketflow.exception.ForbiddenException;
+import nl.ticketflow.exception.InvalidStatusTransitionException;
+import nl.ticketflow.exception.ResourceNotFoundException;
+import nl.ticketflow.mapper.TicketMapper;
+import nl.ticketflow.repository.TicketRepository;
+import nl.ticketflow.security.CurrentUserService;
+import nl.ticketflow.service.TicketWorkflowService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.Set;
+import java.util.UUID;
+
+@Service
+public class TicketWorkflowServiceImpl implements TicketWorkflowService {
+
+    private static final Set<UserRole> AGENT_OR_ADMIN = Set.of(UserRole.AGENT, UserRole.ADMIN);
+
+    private final TicketRepository ticketRepository;
+    private final TicketMapper ticketMapper;
+    private final CurrentUserService currentUserService;
+
+    public TicketWorkflowServiceImpl(TicketRepository ticketRepository, TicketMapper ticketMapper,
+                                     CurrentUserService currentUserService) {
+        this.ticketRepository = ticketRepository;
+        this.ticketMapper = ticketMapper;
+        this.currentUserService = currentUserService;
+    }
+
+    @Override
+    @Transactional
+    public TicketResponse changeStatus(UUID ticketId, TicketStatus newStatus) {
+        UUID currentUserId = currentUserService.getCurrentUserId();
+        UserRole role = currentUserService.getCurrentRole();
+
+        Ticket ticket = ticketRepository.findByIdAndDeletedAtIsNull(ticketId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ticket niet gevonden"));
+
+        if (role == UserRole.REPORTER && !ticket.getReporter().getId().equals(currentUserId)) {
+            throw new ForbiddenException("U heeft geen toegang tot dit ticket");
+        }
+
+        TicketStatus currentStatus = ticket.getStatus();
+        Set<UserRole> allowedRoles = allowedRoles(currentStatus, newStatus);
+        if (currentStatus == TicketStatus.CLOSED || allowedRoles.isEmpty()) {
+            throw new InvalidStatusTransitionException(currentStatus.name(), newStatus.name());
+        }
+        if (!allowedRoles.contains(role)) {
+            throw new ForbiddenException("U heeft geen rechten om de status van dit ticket te wijzigen");
+        }
+
+        if (currentStatus == TicketStatus.OPEN && newStatus == TicketStatus.IN_PROGRESS
+                && ticket.getAssignee() == null) {
+            throw new BusinessRuleException(
+                    "Een ticket moet eerst worden toegewezen voordat het in behandeling kan worden genomen");
+        }
+
+        ticket.setStatus(newStatus);
+        if (newStatus == TicketStatus.RESOLVED) {
+            ticket.setResolvedAt(now());
+        }
+        // Flush so @PreUpdate sets updatedAt before the response is built
+        return ticketMapper.toResponse(ticketRepository.saveAndFlush(ticket));
+    }
+
+    // Roles allowed to move a ticket from one status to another; an empty set means the transition is undefined
+    private Set<UserRole> allowedRoles(TicketStatus from, TicketStatus to) {
+        if (from == TicketStatus.OPEN && to == TicketStatus.IN_PROGRESS) {
+            return AGENT_OR_ADMIN;
+        }
+        if (from == TicketStatus.IN_PROGRESS && to == TicketStatus.WAITING_FOR_REPORTER) {
+            return AGENT_OR_ADMIN;
+        }
+        if (from == TicketStatus.WAITING_FOR_REPORTER && to == TicketStatus.IN_PROGRESS) {
+            return AGENT_OR_ADMIN;
+        }
+        if (from == TicketStatus.IN_PROGRESS && to == TicketStatus.RESOLVED) {
+            return AGENT_OR_ADMIN;
+        }
+        return Set.of();
+    }
+
+    private LocalDateTime now() {
+        return LocalDateTime.now();
+    }
+}
