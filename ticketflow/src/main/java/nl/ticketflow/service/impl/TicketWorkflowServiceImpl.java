@@ -15,6 +15,7 @@ import nl.ticketflow.service.TicketWorkflowService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;
@@ -23,6 +24,8 @@ import java.util.UUID;
 public class TicketWorkflowServiceImpl implements TicketWorkflowService {
 
     private static final Set<UserRole> AGENT_OR_ADMIN = Set.of(UserRole.AGENT, UserRole.ADMIN);
+    private static final Set<UserRole> ALL_ROLES = Set.of(UserRole.REPORTER, UserRole.AGENT, UserRole.ADMIN);
+    private static final Duration REOPEN_WINDOW = Duration.ofDays(7);
 
     private final TicketRepository ticketRepository;
     private final TicketMapper ticketMapper;
@@ -62,10 +65,17 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
             throw new BusinessRuleException(
                     "Een ticket moet eerst worden toegewezen voordat het in behandeling kan worden genomen");
         }
+        boolean reopen = currentStatus == TicketStatus.RESOLVED && newStatus == TicketStatus.OPEN;
+        if (reopen && !withinReopenWindow(ticket.getResolvedAt())) {
+            throw new BusinessRuleException("Een ticket kan alleen binnen 7 dagen na oplossing worden heropend");
+        }
 
         ticket.setStatus(newStatus);
         if (newStatus == TicketStatus.RESOLVED) {
             ticket.setResolvedAt(now());
+        }
+        if (reopen) {
+            ticket.setResolvedAt(null);
         }
         // Flush so @PreUpdate sets updatedAt before the response is built
         return ticketMapper.toResponse(ticketRepository.saveAndFlush(ticket));
@@ -85,7 +95,28 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
         if (from == TicketStatus.IN_PROGRESS && to == TicketStatus.RESOLVED) {
             return AGENT_OR_ADMIN;
         }
+        // A REPORTER is already limited to their own ticket by the ownership check
+        if (from == TicketStatus.RESOLVED && to == TicketStatus.CLOSED) {
+            return ALL_ROLES;
+        }
+        if (from == TicketStatus.RESOLVED && to == TicketStatus.OPEN) {
+            return Set.of(UserRole.REPORTER);
+        }
+        if (from == TicketStatus.OPEN && to == TicketStatus.CLOSED) {
+            return Set.of(UserRole.ADMIN);
+        }
+        if (from == TicketStatus.IN_PROGRESS && to == TicketStatus.CLOSED) {
+            return Set.of(UserRole.ADMIN);
+        }
+        if (from == TicketStatus.WAITING_FOR_REPORTER && to == TicketStatus.CLOSED) {
+            return Set.of(UserRole.ADMIN);
+        }
         return Set.of();
+    }
+
+    // Exactly REOPEN_WINDOW after resolving is still allowed
+    private boolean withinReopenWindow(LocalDateTime resolvedAt) {
+        return resolvedAt != null && !now().isAfter(resolvedAt.plus(REOPEN_WINDOW));
     }
 
     private LocalDateTime now() {
