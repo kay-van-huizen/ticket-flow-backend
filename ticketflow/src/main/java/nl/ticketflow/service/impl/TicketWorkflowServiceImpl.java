@@ -1,5 +1,6 @@
 package nl.ticketflow.service.impl;
 
+import nl.ticketflow.dto.response.TicketEventResponse;
 import nl.ticketflow.dto.response.TicketResponse;
 import nl.ticketflow.entity.Ticket;
 import nl.ticketflow.entity.TicketEventType;
@@ -11,7 +12,9 @@ import nl.ticketflow.exception.BusinessRuleException;
 import nl.ticketflow.exception.ForbiddenException;
 import nl.ticketflow.exception.InvalidStatusTransitionException;
 import nl.ticketflow.exception.ResourceNotFoundException;
+import nl.ticketflow.mapper.TicketEventMapper;
 import nl.ticketflow.mapper.TicketMapper;
+import nl.ticketflow.repository.TicketEventRepository;
 import nl.ticketflow.repository.TicketRepository;
 import nl.ticketflow.repository.UserAccountRepository;
 import nl.ticketflow.security.CurrentUserService;
@@ -23,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -40,11 +44,15 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
     private final TicketEventRecorder ticketEventRecorder;
     private final UserAccountRepository userAccountRepository;
     private final SlaPolicy slaPolicy;
+    private final TicketEventRepository ticketEventRepository;
+    private final TicketEventMapper ticketEventMapper;
 
     public TicketWorkflowServiceImpl(TicketRepository ticketRepository, TicketMapper ticketMapper,
                                      CurrentUserService currentUserService, UserService userService,
                                      TicketEventRecorder ticketEventRecorder,
-                                     UserAccountRepository userAccountRepository, SlaPolicy slaPolicy) {
+                                     UserAccountRepository userAccountRepository, SlaPolicy slaPolicy,
+                                     TicketEventRepository ticketEventRepository,
+                                     TicketEventMapper ticketEventMapper) {
         this.ticketRepository = ticketRepository;
         this.ticketMapper = ticketMapper;
         this.currentUserService = currentUserService;
@@ -52,6 +60,8 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
         this.ticketEventRecorder = ticketEventRecorder;
         this.userAccountRepository = userAccountRepository;
         this.slaPolicy = slaPolicy;
+        this.ticketEventRepository = ticketEventRepository;
+        this.ticketEventMapper = ticketEventMapper;
     }
 
     @Override
@@ -146,6 +156,20 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
         String oldValue = currentAssignee != null ? currentAssignee.getUsername() : null;
         ticketEventRecorder.record(ticket, TicketEventType.ASSIGNED, oldValue, assignee.getUsername(), currentUser);
         return ticketMapper.toResponse(ticketRepository.saveAndFlush(ticket));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TicketEventResponse> getHistory(UUID ticketId) {
+        Ticket ticket = findTicketOrThrow(ticketId);
+        if (currentUserService.getCurrentRole() == UserRole.REPORTER
+                && !ticket.getReporter().getId().equals(currentUserService.getCurrentUserId())) {
+            throw new ForbiddenException("U heeft geen toegang tot dit ticket");
+        }
+
+        return ticketEventRepository.findByTicketIdOrderByChangedAtAscIdAsc(ticket.getId()).stream()
+                .map(ticketEventMapper::toResponse)
+                .toList();
     }
 
     private Ticket findTicketOrThrow(UUID id) {

@@ -7,10 +7,13 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import nl.ticketflow.dto.request.AssignTicketRequest;
+import nl.ticketflow.dto.request.ChangePriorityRequest;
 import nl.ticketflow.dto.request.ChangeStatusRequest;
 import nl.ticketflow.dto.request.CreateTicketRequest;
 import nl.ticketflow.dto.request.UpdateTicketRequest;
 import nl.ticketflow.dto.response.ErrorResponse;
+import nl.ticketflow.dto.response.TicketEventResponse;
 import nl.ticketflow.dto.response.TicketResponse;
 import nl.ticketflow.entity.TicketPriority;
 import nl.ticketflow.entity.TicketStatus;
@@ -126,6 +129,51 @@ public class TicketController {
     public ResponseEntity<TicketResponse> changeStatus(@PathVariable UUID id,
                                                        @Valid @RequestBody ChangeStatusRequest request) {
         return ResponseEntity.ok(ticketWorkflowService.changeStatus(id, request.status()));
+    }
+
+    @PatchMapping("/{id}/priority")
+    @PreAuthorize("hasAnyRole('AGENT','ADMIN')")
+    @Operation(summary = "Wijzig de prioriteit van een ticket",
+            description = "De deadline wordt opnieuw berekend vanaf het aanmaakmoment volgens de SLA van de nieuwe "
+                    + "prioriteit. Alleen voor agents en beheerders.")
+    @ApiResponse(responseCode = "200", description = "Ticket met de nieuwe prioriteit")
+    @ApiResponse(responseCode = "400", description = "Prioriteit ontbreekt of is ongeldig",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "404", description = "Ticket niet gevonden",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "Ticket is gesloten",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<TicketResponse> changePriority(@PathVariable UUID id,
+                                                         @Valid @RequestBody ChangePriorityRequest request) {
+        return ResponseEntity.ok(ticketWorkflowService.changePriority(id, request.priority()));
+    }
+
+    @PatchMapping("/{id}/assignee")
+    @PreAuthorize("hasAnyRole('AGENT','ADMIN')")
+    @Operation(summary = "Wijs een ticket toe aan een agent of beheerder",
+            description = "Alleen voor agents en beheerders.")
+    @ApiResponse(responseCode = "200", description = "Ticket met de nieuwe toegewezen gebruiker")
+    @ApiResponse(responseCode = "400", description = "Toegewezen gebruiker ontbreekt of is ongeldig",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "404", description = "Ticket of gebruiker niet gevonden",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "Ticket is gesloten of de gebruiker is geen agent of beheerder",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<TicketResponse> assign(@PathVariable UUID id,
+                                                 @Valid @RequestBody AssignTicketRequest request) {
+        return ResponseEntity.ok(ticketWorkflowService.assign(id, request.assigneeId()));
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAnyRole('REPORTER','AGENT','ADMIN')")
+    @Operation(summary = "Geschiedenis van een ticket ophalen",
+            description = "Alle wijzigingen van het ticket, oudste eerst. Een melder kan alleen de geschiedenis "
+                    + "van een eigen ticket bekijken.")
+    @ApiResponse(responseCode = "200", description = "Lijst van gebeurtenissen van het ticket")
+    @ApiResponse(responseCode = "404", description = "Ticket niet gevonden",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<List<TicketEventResponse>> getHistory(@PathVariable UUID id) {
+        return ResponseEntity.ok(ticketWorkflowService.getHistory(id));
     }
 
     @DeleteMapping("/{id}")

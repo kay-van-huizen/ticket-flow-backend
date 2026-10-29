@@ -1,5 +1,6 @@
 package nl.ticketflow.service;
 
+import nl.ticketflow.dto.response.TicketEventResponse;
 import nl.ticketflow.dto.response.TicketResponse;
 import nl.ticketflow.entity.TicketPriority;
 import nl.ticketflow.entity.TicketStatus;
@@ -8,6 +9,7 @@ import nl.ticketflow.exception.ForbiddenException;
 import nl.ticketflow.exception.InvalidStatusTransitionException;
 import nl.ticketflow.exception.ResourceNotFoundException;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface TicketWorkflowService {
@@ -39,4 +41,12 @@ public interface TicketWorkflowService {
      * @throws BusinessRuleException     if the ticket is closed or the assignee is not an agent or admin
      */
     TicketResponse assign(UUID ticketId, UUID assigneeId);
+
+    /**
+     * Returns the events of a ticket, oldest first; a reporter can only read the history of their own ticket.
+     *
+     * @throws ResourceNotFoundException if the ticket does not exist or is deleted
+     * @throws ForbiddenException        if a reporter requests the history of someone else's ticket
+     */
+    List<TicketEventResponse> getHistory(UUID ticketId);
 }
