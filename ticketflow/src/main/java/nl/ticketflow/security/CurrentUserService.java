@@ -53,4 +53,9 @@ public class CurrentUserService {
                 .max(ROLE_RANK)
                 .orElseThrow(() -> new ForbiddenException("Geen geldige rol gevonden"));
     }
+
+    public boolean isAgentOrAdmin() {
+        UserRole role = getCurrentRole();
+        return role == UserRole.AGENT || role == UserRole.ADMIN;
+    }
 }
