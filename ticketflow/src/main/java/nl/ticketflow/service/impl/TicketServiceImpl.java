@@ -24,6 +24,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -111,6 +112,15 @@ public class TicketServiceImpl implements TicketService {
         ticketMapper.updateEntity(ticket, request, category);
         // Flush so @PreUpdate sets updatedAt before the response is built
         return ticketMapper.toResponse(ticketRepository.saveAndFlush(ticket));
+    }
+
+    @Override
+    @Transactional
+    public void deleteTicket(UUID id) {
+        // ADMIN-only is enforced in TicketController; an already deleted ticket gives 404
+        Ticket ticket = findTicketOrThrow(id);
+        ticket.setDeletedAt(LocalDateTime.now());
+        ticketRepository.save(ticket);
     }
 
     // AGENT and ADMIN see every ticket; a REPORTER gets 403 instead of 404 on someone else's ticket

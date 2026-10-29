@@ -18,4 +18,6 @@ public interface TicketService {
     List<TicketResponse> listTickets(TicketStatus status, TicketPriority priority, UUID categoryId, UUID assigneeId);
 
     TicketResponse updateTicket(UUID id, UpdateTicketRequest request);
+
+    void deleteTicket(UUID id);
 }
