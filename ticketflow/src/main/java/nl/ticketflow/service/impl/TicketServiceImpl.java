@@ -17,6 +17,7 @@ import nl.ticketflow.repository.CategoryRepository;
 import nl.ticketflow.repository.TicketRepository;
 import nl.ticketflow.repository.TicketSpecifications;
 import nl.ticketflow.security.CurrentUserService;
+import nl.ticketflow.service.SlaPolicy;
 import nl.ticketflow.service.TicketService;
 import nl.ticketflow.service.UserService;
 import org.springframework.data.domain.Sort;
@@ -37,15 +38,17 @@ public class TicketServiceImpl implements TicketService {
     private final TicketMapper ticketMapper;
     private final CurrentUserService currentUserService;
     private final UserService userService;
+    private final SlaPolicy slaPolicy;
 
     public TicketServiceImpl(TicketRepository ticketRepository, CategoryRepository categoryRepository,
                              TicketMapper ticketMapper, CurrentUserService currentUserService,
-                             UserService userService) {
+                             UserService userService, SlaPolicy slaPolicy) {
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
         this.ticketMapper = ticketMapper;
         this.currentUserService = currentUserService;
         this.userService = userService;
+        this.slaPolicy = slaPolicy;
     }
 
     @Override
@@ -59,7 +62,10 @@ public class TicketServiceImpl implements TicketService {
         // New tickets always start as NORMAL and OPEN; dueAt follows with the SLA policy
         ticket.setPriority(TicketPriority.NORMAL);
         ticket.setStatus(TicketStatus.OPEN);
-        return ticketMapper.toResponse(ticketRepository.save(ticket));
+        Ticket saved = ticketRepository.save(ticket);
+        // createdAt is set by @PrePersist during save; dirty checking persists dueAt on commit
+        saved.setDueAt(slaPolicy.calculateDueAt(saved.getCreatedAt(), saved.getPriority()));
+        return ticketMapper.toResponse(saved);
     }
 
     @Override
