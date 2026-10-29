@@ -29,6 +29,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -52,11 +53,13 @@ public class TicketServiceImpl implements TicketService {
     private final SlaPolicy slaPolicy;
     private final TicketEventRecorder ticketEventRecorder;
     private final LabelRepository labelRepository;
+    private final Clock clock;
 
     public TicketServiceImpl(TicketRepository ticketRepository, CategoryRepository categoryRepository,
                              TicketMapper ticketMapper, CurrentUserService currentUserService,
                              UserService userService, SlaPolicy slaPolicy,
-                             TicketEventRecorder ticketEventRecorder, LabelRepository labelRepository) {
+                             TicketEventRecorder ticketEventRecorder, LabelRepository labelRepository,
+                             Clock clock) {
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
         this.ticketMapper = ticketMapper;
@@ -65,6 +68,7 @@ public class TicketServiceImpl implements TicketService {
         this.slaPolicy = slaPolicy;
         this.ticketEventRecorder = ticketEventRecorder;
         this.labelRepository = labelRepository;
+        this.clock = clock;
     }
 
     @Override
@@ -128,7 +132,7 @@ public class TicketServiceImpl implements TicketService {
     @Override
     @Transactional(readOnly = true)
     public List<TicketResponse> getOverdueTickets() {
-        return ticketRepository.findOverdue(LocalDateTime.now(), FINISHED_STATUSES).stream()
+        return ticketRepository.findOverdue(LocalDateTime.now(clock), FINISHED_STATUSES).stream()
                 .map(ticketMapper::toResponse)
                 .toList();
     }
@@ -157,7 +161,7 @@ public class TicketServiceImpl implements TicketService {
                 ticketRepository.countByDeletedAtIsNull(),
                 byStatus,
                 byPriority,
-                ticketRepository.countOverdue(LocalDateTime.now(), FINISHED_STATUSES),
+                ticketRepository.countOverdue(LocalDateTime.now(clock), FINISHED_STATUSES),
                 ticketRepository.countByAssigneeIsNullAndStatusNotInAndDeletedAtIsNull(FINISHED_STATUSES)
         );
     }
@@ -182,7 +186,7 @@ public class TicketServiceImpl implements TicketService {
     public void deleteTicket(UUID id) {
         // ADMIN-only is enforced in TicketController; an already deleted ticket gives 404
         Ticket ticket = findTicketOrThrow(id);
-        ticket.setDeletedAt(LocalDateTime.now());
+        ticket.setDeletedAt(LocalDateTime.now(clock));
         ticketRepository.save(ticket);
     }
 

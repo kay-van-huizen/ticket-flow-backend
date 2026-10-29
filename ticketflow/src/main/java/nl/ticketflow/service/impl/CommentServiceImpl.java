@@ -63,9 +63,7 @@ public class CommentServiceImpl implements CommentService {
         if (!currentUserService.isAgentOrAdmin() && request.internal()) {
             throw new ForbiddenException("Melders mogen geen interne reacties plaatsen");
         }
-        if (ticket.getStatus() == TicketStatus.CLOSED) {
-            throw new BusinessRuleException("Gesloten tickets accepteren geen reacties meer");
-        }
+        checkNotClosed(ticket);
 
         // Creates the UserAccount on first login, so the author always exists in the database
         UserAccount author = userService.getOrCreateCurrentUser();
@@ -77,6 +75,7 @@ public class CommentServiceImpl implements CommentService {
     @Transactional
     public CommentResponse update(UUID ticketId, UUID commentId, UpdateCommentRequest request) {
         Ticket ticket = getAccessibleTicket(ticketId);
+        checkNotClosed(ticket);
         Comment comment = getCommentOfTicket(ticket, commentId);
         if (!isAuthorOrAdmin(comment)) {
             throw new ForbiddenException("Je mag alleen je eigen reacties wijzigen");
@@ -91,6 +90,7 @@ public class CommentServiceImpl implements CommentService {
     @Transactional
     public void delete(UUID ticketId, UUID commentId) {
         Ticket ticket = getAccessibleTicket(ticketId);
+        checkNotClosed(ticket);
         Comment comment = getCommentOfTicket(ticket, commentId);
         if (!isAuthorOrAdmin(comment)) {
             throw new ForbiddenException("Je mag alleen je eigen reacties verwijderen");
@@ -115,6 +115,12 @@ public class CommentServiceImpl implements CommentService {
             throw new ForbiddenException("Je hebt geen toegang tot dit ticket");
         }
         return ticket;
+    }
+
+    private void checkNotClosed(Ticket ticket) {
+        if (ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new BusinessRuleException("Gesloten tickets accepteren geen reacties meer");
+        }
     }
 
     // A comment of another ticket, or an internal comment for a REPORTER, gives 404 so its existence is not revealed
