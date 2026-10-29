@@ -4,6 +4,7 @@ import nl.ticketflow.entity.TicketPriority;
 import nl.ticketflow.entity.TicketStatus;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record TicketResponse(
@@ -18,6 +19,7 @@ public record TicketResponse(
         String assigneeName,
         UUID categoryId,
         String categoryTitle,
+        List<LabelResponse> labels,
         LocalDateTime dueAt,
         LocalDateTime resolvedAt,
         LocalDateTime createdAt,

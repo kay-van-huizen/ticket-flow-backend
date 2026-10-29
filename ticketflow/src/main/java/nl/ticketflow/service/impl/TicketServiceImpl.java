@@ -3,8 +3,10 @@ package nl.ticketflow.service.impl;
 import nl.ticketflow.dto.request.CreateTicketRequest;
 import nl.ticketflow.dto.request.UpdateTicketRequest;
 import nl.ticketflow.dto.response.TicketResponse;
+import nl.ticketflow.dto.response.TicketStatsResponse;
 import nl.ticketflow.entity.Category;
 import nl.ticketflow.entity.CategoryStatus;
+import nl.ticketflow.entity.Label;
 import nl.ticketflow.entity.Ticket;
 import nl.ticketflow.entity.TicketEventType;
 import nl.ticketflow.entity.TicketPriority;
@@ -15,6 +17,7 @@ import nl.ticketflow.exception.ForbiddenException;
 import nl.ticketflow.exception.ResourceNotFoundException;
 import nl.ticketflow.mapper.TicketMapper;
 import nl.ticketflow.repository.CategoryRepository;
+import nl.ticketflow.repository.LabelRepository;
 import nl.ticketflow.repository.TicketRepository;
 import nl.ticketflow.repository.TicketSpecifications;
 import nl.ticketflow.security.CurrentUserService;
@@ -28,11 +31,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class TicketServiceImpl implements TicketService {
+
+    // Tickets in these statuses are never overdue and do not count as unassigned work
+    private static final Set<TicketStatus> FINISHED_STATUSES = EnumSet.of(TicketStatus.RESOLVED, TicketStatus.CLOSED);
 
     private final TicketRepository ticketRepository;
     private final CategoryRepository categoryRepository;
@@ -41,11 +51,12 @@ public class TicketServiceImpl implements TicketService {
     private final UserService userService;
     private final SlaPolicy slaPolicy;
     private final TicketEventRecorder ticketEventRecorder;
+    private final LabelRepository labelRepository;
 
     public TicketServiceImpl(TicketRepository ticketRepository, CategoryRepository categoryRepository,
                              TicketMapper ticketMapper, CurrentUserService currentUserService,
                              UserService userService, SlaPolicy slaPolicy,
-                             TicketEventRecorder ticketEventRecorder) {
+                             TicketEventRecorder ticketEventRecorder, LabelRepository labelRepository) {
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
         this.ticketMapper = ticketMapper;
@@ -53,6 +64,7 @@ public class TicketServiceImpl implements TicketService {
         this.userService = userService;
         this.slaPolicy = slaPolicy;
         this.ticketEventRecorder = ticketEventRecorder;
+        this.labelRepository = labelRepository;
     }
 
     @Override
@@ -84,7 +96,7 @@ public class TicketServiceImpl implements TicketService {
     @Override
     @Transactional(readOnly = true)
     public List<TicketResponse> listTickets(TicketStatus status, TicketPriority priority, UUID categoryId,
-                                            UUID assigneeId) {
+                                            UUID assigneeId, UUID labelId) {
         List<Specification<Ticket>> specs = new ArrayList<>();
         specs.add(TicketSpecifications.notDeleted());
         if (status != null) {
@@ -99,6 +111,9 @@ public class TicketServiceImpl implements TicketService {
         if (assigneeId != null) {
             specs.add(TicketSpecifications.hasAssignee(assigneeId));
         }
+        if (labelId != null) {
+            specs.add(TicketSpecifications.hasLabel(labelId));
+        }
         if (!currentUserService.isAgentOrAdmin()) {
             specs.add(TicketSpecifications.hasReporter(currentUserService.getCurrentUserId()));
         }
@@ -108,6 +123,43 @@ public class TicketServiceImpl implements TicketService {
                 .stream()
                 .map(ticketMapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TicketResponse> getOverdueTickets() {
+        return ticketRepository.findOverdue(LocalDateTime.now(), FINISHED_STATUSES).stream()
+                .map(ticketMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TicketStatsResponse getStats() {
+        // EnumMap keeps the declaration order in the JSON; missing enum values stay 0
+        Map<TicketStatus, Long> byStatus = new EnumMap<>(TicketStatus.class);
+        for (TicketStatus status : TicketStatus.values()) {
+            byStatus.put(status, 0L);
+        }
+        for (Object[] row : ticketRepository.countPerStatus()) {
+            byStatus.put((TicketStatus) row[0], (Long) row[1]);
+        }
+
+        Map<TicketPriority, Long> byPriority = new EnumMap<>(TicketPriority.class);
+        for (TicketPriority priority : TicketPriority.values()) {
+            byPriority.put(priority, 0L);
+        }
+        for (Object[] row : ticketRepository.countPerPriority()) {
+            byPriority.put((TicketPriority) row[0], (Long) row[1]);
+        }
+
+        return new TicketStatsResponse(
+                ticketRepository.countByDeletedAtIsNull(),
+                byStatus,
+                byPriority,
+                ticketRepository.countOverdue(LocalDateTime.now(), FINISHED_STATUSES),
+                ticketRepository.countByAssigneeIsNullAndStatusNotInAndDeletedAtIsNull(FINISHED_STATUSES)
+        );
     }
 
     @Override
@@ -134,11 +186,51 @@ public class TicketServiceImpl implements TicketService {
         ticketRepository.save(ticket);
     }
 
+    @Override
+    @Transactional
+    public TicketResponse addLabel(UUID ticketId, UUID labelId) {
+        // AGENT/ADMIN-only is enforced in TicketController
+        UserAccount currentUser = userService.getOrCreateCurrentUser();
+        Ticket ticket = findTicketOrThrow(ticketId);
+        Label label = findLabelOrThrow(labelId);
+        checkNotClosed(ticket);
+
+        // Idempotent: an already attached label changes nothing and records no event
+        if (!ticket.getLabels().add(label)) {
+            return ticketMapper.toResponse(ticket);
+        }
+
+        ticketEventRecorder.record(ticket, TicketEventType.LABEL_ADDED, null, label.getName(), currentUser);
+        return ticketMapper.toResponse(ticketRepository.saveAndFlush(ticket));
+    }
+
+    @Override
+    @Transactional
+    public void removeLabel(UUID ticketId, UUID labelId) {
+        UserAccount currentUser = userService.getOrCreateCurrentUser();
+        Ticket ticket = findTicketOrThrow(ticketId);
+        Label label = findLabelOrThrow(labelId);
+        checkNotClosed(ticket);
+
+        if (!ticket.getLabels().remove(label)) {
+            throw new ResourceNotFoundException("Label is niet gekoppeld aan dit ticket");
+        }
+
+        ticketEventRecorder.record(ticket, TicketEventType.LABEL_REMOVED, label.getName(), null, currentUser);
+        ticketRepository.save(ticket);
+    }
+
     // AGENT and ADMIN see every ticket; a REPORTER gets 403 instead of 404 on someone else's ticket
     private void checkAccess(Ticket ticket) {
         if (!currentUserService.isAgentOrAdmin()
                 && !ticket.getReporter().getId().equals(currentUserService.getCurrentUserId())) {
             throw new ForbiddenException("Je hebt geen toegang tot dit ticket");
+        }
+    }
+
+    private void checkNotClosed(Ticket ticket) {
+        if (ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new BusinessRuleException("Een gesloten ticket kan niet meer worden gewijzigd");
         }
     }
 
@@ -162,5 +254,10 @@ public class TicketServiceImpl implements TicketService {
     private Category findCategoryOrThrow(UUID id) {
         return categoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Categorie niet gevonden"));
+    }
+
+    private Label findLabelOrThrow(UUID id) {
+        return labelRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Label niet gevonden"));
     }
 }

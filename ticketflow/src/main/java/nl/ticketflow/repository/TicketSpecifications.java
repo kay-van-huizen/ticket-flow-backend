@@ -29,6 +29,11 @@ public final class TicketSpecifications {
         return (root, query, cb) -> cb.equal(root.get("assignee").get("id"), assigneeId);
     }
 
+    // Joins on one label id, so each ticket appears at most once
+    public static Specification<Ticket> hasLabel(UUID labelId) {
+        return (root, query, cb) -> cb.equal(root.join("labels").get("id"), labelId);
+    }
+
     public static Specification<Ticket> hasReporter(UUID reporterId) {
         return (root, query, cb) -> cb.equal(root.get("reporter").get("id"), reporterId);
     }

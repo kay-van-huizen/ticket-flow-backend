@@ -4,12 +4,21 @@ import nl.ticketflow.dto.request.CreateTicketRequest;
 import nl.ticketflow.dto.request.UpdateTicketRequest;
 import nl.ticketflow.dto.response.TicketResponse;
 import nl.ticketflow.entity.Category;
+import nl.ticketflow.entity.Label;
 import nl.ticketflow.entity.Ticket;
 import nl.ticketflow.entity.UserAccount;
 import org.springframework.stereotype.Component;
 
+import java.util.Comparator;
+
 @Component
 public class TicketMapper {
+
+    private final LabelMapper labelMapper;
+
+    public TicketMapper(LabelMapper labelMapper) {
+        this.labelMapper = labelMapper;
+    }
 
     public Ticket toEntity(CreateTicketRequest request, UserAccount reporter, Category category) {
         Ticket ticket = new Ticket();
@@ -27,6 +36,7 @@ public class TicketMapper {
         ticket.setCategory(category);
     }
 
+    // Labels are lazy, so this must be called inside the service transaction
     public TicketResponse toResponse(Ticket ticket) {
         UserAccount reporter = ticket.getReporter();
         UserAccount assignee = ticket.getAssignee();
@@ -43,6 +53,10 @@ public class TicketMapper {
                 assignee == null ? null : assignee.getFullName(),
                 category == null ? null : category.getId(),
                 category == null ? null : category.getTitle(),
+                ticket.getLabels().stream()
+                        .sorted(Comparator.comparing(Label::getName, String.CASE_INSENSITIVE_ORDER))
+                        .map(labelMapper::toResponse)
+                        .toList(),
                 ticket.getDueAt(),
                 ticket.getResolvedAt(),
                 ticket.getCreatedAt(),

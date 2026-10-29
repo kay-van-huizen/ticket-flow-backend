@@ -3,6 +3,7 @@ package nl.ticketflow.service;
 import nl.ticketflow.dto.request.CreateTicketRequest;
 import nl.ticketflow.dto.request.UpdateTicketRequest;
 import nl.ticketflow.dto.response.TicketResponse;
+import nl.ticketflow.dto.response.TicketStatsResponse;
 import nl.ticketflow.entity.TicketPriority;
 import nl.ticketflow.entity.TicketStatus;
 
@@ -15,9 +16,18 @@ public interface TicketService {
 
     TicketResponse getTicket(UUID id);
 
-    List<TicketResponse> listTickets(TicketStatus status, TicketPriority priority, UUID categoryId, UUID assigneeId);
+    List<TicketResponse> listTickets(TicketStatus status, TicketPriority priority, UUID categoryId, UUID assigneeId,
+                                     UUID labelId);
+
+    List<TicketResponse> getOverdueTickets();
+
+    TicketStatsResponse getStats();
 
     TicketResponse updateTicket(UUID id, UpdateTicketRequest request);
 
     void deleteTicket(UUID id);
+
+    TicketResponse addLabel(UUID ticketId, UUID labelId);
+
+    void removeLabel(UUID ticketId, UUID labelId);
 }
