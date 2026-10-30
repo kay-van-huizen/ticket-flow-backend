@@ -24,6 +24,7 @@ import nl.ticketflow.service.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -46,13 +47,14 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
     private final SlaPolicy slaPolicy;
     private final TicketEventRepository ticketEventRepository;
     private final TicketEventMapper ticketEventMapper;
+    private final Clock clock;
 
     public TicketWorkflowServiceImpl(TicketRepository ticketRepository, TicketMapper ticketMapper,
                                      CurrentUserService currentUserService, UserService userService,
                                      TicketEventRecorder ticketEventRecorder,
                                      UserAccountRepository userAccountRepository, SlaPolicy slaPolicy,
                                      TicketEventRepository ticketEventRepository,
-                                     TicketEventMapper ticketEventMapper) {
+                                     TicketEventMapper ticketEventMapper, Clock clock) {
         this.ticketRepository = ticketRepository;
         this.ticketMapper = ticketMapper;
         this.currentUserService = currentUserService;
@@ -62,6 +64,7 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
         this.slaPolicy = slaPolicy;
         this.ticketEventRepository = ticketEventRepository;
         this.ticketEventMapper = ticketEventMapper;
+        this.clock = clock;
     }
 
     @Override
@@ -75,7 +78,7 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket niet gevonden"));
 
         if (role == UserRole.REPORTER && !ticket.getReporter().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("U heeft geen toegang tot dit ticket");
+            throw new ForbiddenException("Je hebt geen toegang tot dit ticket");
         }
 
         TicketStatus currentStatus = ticket.getStatus();
@@ -84,7 +87,7 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
             throw new InvalidStatusTransitionException(currentStatus.name(), newStatus.name());
         }
         if (!allowedRoles.contains(role)) {
-            throw new ForbiddenException("U heeft geen rechten om de status van dit ticket te wijzigen");
+            throw new ForbiddenException("Je hebt geen rechten om de status van dit ticket te wijzigen");
         }
 
         if (currentStatus == TicketStatus.OPEN && newStatus == TicketStatus.IN_PROGRESS
@@ -164,7 +167,7 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
         Ticket ticket = findTicketOrThrow(ticketId);
         if (currentUserService.getCurrentRole() == UserRole.REPORTER
                 && !ticket.getReporter().getId().equals(currentUserService.getCurrentUserId())) {
-            throw new ForbiddenException("U heeft geen toegang tot dit ticket");
+            throw new ForbiddenException("Je hebt geen toegang tot dit ticket");
         }
 
         return ticketEventRepository.findByTicketIdOrderByChangedAtAscIdAsc(ticket.getId()).stream()
@@ -228,6 +231,6 @@ public class TicketWorkflowServiceImpl implements TicketWorkflowService {
     }
 
     private LocalDateTime now() {
-        return LocalDateTime.now();
+        return LocalDateTime.now(clock);
     }
 }
