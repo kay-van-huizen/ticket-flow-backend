@@ -2,7 +2,7 @@ package nl.ticketflow.service.impl;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import nl.ticketflow.exception.BusinessRuleException;
+import nl.ticketflow.exception.InvalidFileException;
 import nl.ticketflow.exception.ResourceNotFoundException;
 import nl.ticketflow.service.FileStorageService;
 import org.springframework.beans.factory.annotation.Value;
@@ -56,7 +56,7 @@ public class FileStorageServiceImpl implements FileStorageService {
     @Override
     public String store(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new BusinessRuleException("Het bestand is leeg");
+            throw new InvalidFileException("Het bestand is leeg");
         }
         if (file.getSize() > MAX_SIZE_BYTES) {
             // Same exception as Spring's multipart limit, so GlobalExceptionHandler returns 413
@@ -68,7 +68,7 @@ public class FileStorageServiceImpl implements FileStorageService {
         String storedName = UUID.randomUUID() + "." + extension;
         Path target = resolveInsideRoot(storedName);
         if (target == null) {
-            throw new BusinessRuleException(TYPE_NOT_ALLOWED);
+            throw new InvalidFileException(TYPE_NOT_ALLOWED);
         }
 
         try (InputStream in = file.getInputStream()) {
@@ -105,12 +105,12 @@ public class FileStorageServiceImpl implements FileStorageService {
     private String allowedExtension(MultipartFile file) {
         String originalName = file.getOriginalFilename();
         if (!StringUtils.hasText(originalName)) {
-            throw new BusinessRuleException(TYPE_NOT_ALLOWED);
+            throw new InvalidFileException(TYPE_NOT_ALLOWED);
         }
         String extension = StringUtils.getFilenameExtension(originalName);
         String contentType = file.getContentType();
         if (extension == null || contentType == null) {
-            throw new BusinessRuleException(TYPE_NOT_ALLOWED);
+            throw new InvalidFileException(TYPE_NOT_ALLOWED);
         }
 
         extension = extension.toLowerCase(Locale.ROOT);
@@ -118,7 +118,7 @@ public class FileStorageServiceImpl implements FileStorageService {
         contentType = contentType.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
         Set<String> allowedContentTypes = ALLOWED_TYPES.get(extension);
         if (allowedContentTypes == null || !allowedContentTypes.contains(contentType)) {
-            throw new BusinessRuleException(TYPE_NOT_ALLOWED);
+            throw new InvalidFileException(TYPE_NOT_ALLOWED);
         }
         return extension;
     }

@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.databind.exc.InvalidFormatException;
 
@@ -121,10 +123,30 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.NOT_FOUND, "De opgevraagde bron bestaat niet", request);
     }
 
+    @ExceptionHandler(InvalidFileException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidFile(InvalidFileException ex, HttpServletRequest request) {
+        log.debug("Invalid file: {}", ex.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ErrorResponse> handleMissingPart(MissingServletRequestPartException ex, HttpServletRequest request) {
+        log.debug("Missing request part: {}", ex.getRequestPartName());
+        return buildResponse(HttpStatus.BAD_REQUEST,
+                "Het bestand ontbreekt. Stuur het mee in het formulierveld '" + ex.getRequestPartName() + "'", request);
+    }
+
+    // Declared before the generic MultipartException, so oversized uploads keep their own 413
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException ex, HttpServletRequest request) {
         log.debug("Upload too large: {}", ex.getMessage());
         return buildResponse(HttpStatus.CONTENT_TOO_LARGE, "Het bestand is te groot. De maximale grootte is 10 MB.", request);
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ErrorResponse> handleMultipart(MultipartException ex, HttpServletRequest request) {
+        log.debug("Invalid multipart request: {}", ex.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, "Het verzoek is geen geldige multipart/form-data upload", request);
     }
 
     @ExceptionHandler(Exception.class)
