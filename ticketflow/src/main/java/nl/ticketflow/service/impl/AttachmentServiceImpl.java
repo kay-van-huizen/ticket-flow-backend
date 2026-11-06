@@ -6,6 +6,7 @@ import nl.ticketflow.entity.Attachment;
 import nl.ticketflow.entity.Comment;
 import nl.ticketflow.entity.Ticket;
 import nl.ticketflow.entity.TicketStatus;
+import nl.ticketflow.entity.UserRole;
 import nl.ticketflow.exception.BusinessRuleException;
 import nl.ticketflow.exception.DuplicateResourceException;
 import nl.ticketflow.exception.ForbiddenException;
@@ -51,6 +52,7 @@ public class AttachmentServiceImpl implements AttachmentService {
     public AttachmentResponse upload(UUID ticketId, UUID commentId, MultipartFile file) {
         Ticket ticket = getAccessibleTicket(ticketId);
         Comment comment = getCommentOfTicket(ticket, commentId);
+        checkAuthorOrAdmin(comment, "Je mag alleen een bijlage toevoegen aan je eigen reacties");
         checkNotClosed(ticket);
         if (comment.getAttachment() != null) {
             throw new DuplicateResourceException("Bij deze reactie is al een bijlage aanwezig");
@@ -91,6 +93,7 @@ public class AttachmentServiceImpl implements AttachmentService {
     public void delete(UUID ticketId, UUID commentId) {
         Ticket ticket = getAccessibleTicket(ticketId);
         Comment comment = getCommentOfTicket(ticket, commentId);
+        checkAuthorOrAdmin(comment, "Je mag alleen bijlagen van je eigen reacties verwijderen");
         Attachment attachment = getAttachmentOrThrow(comment);
         checkNotClosed(ticket);
 
@@ -125,6 +128,13 @@ public class AttachmentServiceImpl implements AttachmentService {
             throw new ResourceNotFoundException("Deze reactie heeft geen bijlage");
         }
         return comment.getAttachment();
+    }
+
+    private void checkAuthorOrAdmin(Comment comment, String message) {
+        if (!comment.getAuthor().getId().equals(currentUserService.getCurrentUserId())
+                && currentUserService.getCurrentRole() != UserRole.ADMIN) {
+            throw new ForbiddenException(message);
+        }
     }
 
     private void checkNotClosed(Ticket ticket) {
